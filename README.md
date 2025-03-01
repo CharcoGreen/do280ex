@@ -279,3 +279,17 @@ htpasswd -c -B -b ~/DO280/labs/auth-review/tmp_users tester 'L@bR3v!ew'
 # Add new or update user and password to file.
 htpasswd -b  ~/DO280/labs/auth-review/tmp_users tester 'L@bR3v!ew'
 ```
+
+- Expose service (route) http
+
+```bash
+oc expose service/todo-http --hostname=todo-http.apps.ocp4.example.com
+```
+
+- Create edge route
+
+```bash
+oc create route edge todo-https \
+    --service todo-http \
+    --hostname todo-https.apps.ocp4.example.com
+```
