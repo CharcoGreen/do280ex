@@ -31,6 +31,7 @@ Security y RBAC en OpenShift
 
 ## Some resources
 
+[un official Wiki](https://www.enoks.fr/openshift/EX280/#manage-openshift-container-platform)
 [YouTube Videos 1](https://www.youtube.com/watch?v=YWMG6pZh8YY)  
 [YouTube Videos 2](https://www.youtube.com/watch?v=nLhBrjhQRe8)  
 [GitHub Repository: ex280v42](https://github.com/vbudi000/ex280v42)  
@@ -293,3 +294,73 @@ oc create route edge todo-https \
     --service todo-http \
     --hostname todo-https.apps.ocp4.example.com
 ```
+
+- Debug po
+  
+```bash
+ oc debug -t deployment/todo-http \
+    --image registry.ocp4.example.com:8443/ubi8/ubi:8.4
+```
+
+- Create Cert
+
+```bash
+
+## Run the following command to create the private key
+
+openssl genrsa -out training.key 4096
+
+## Run the following command to generate a certificate signing request
+
+openssl req -new \
+  -subj "/C=US/ST=North Carolina/L=Raleigh/O=Red Hat/CN=todo-https.apps.ocp4.example.com" \
+  -key training.key -out training.csr
+
+## Run the following command to generate a certificate
+
+openssl x509 -req -in training.csr \
+  -passin file:passphrase.txt \
+  -CA training-CA.pem -CAkey training-CA.key -CAcreateserial \
+  -out training.crt -days 1825 -sha256 -extfile training.ext
+
+```
+
+- Networkpolicy to ingress traffic from ingress namespace
+
+```bash
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: allow-from-openshift-ingress
+spec:
+  podSelector:
+    matchLabels:
+      deployment: 'hello'
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          policy-group.network.openshift.io/ingress: ""
+```
+
+- Internal traffic TLS 
+  
+```bash
+ oc annotate svc server service.beta.openshift.io/serving-cert-secret-name=server-secret
+```
+
+- Review cert.
+
+```bash
+openssl s_client -connect server.network-svccerts.svc:443
+```
+
+- Create SA
+
+```bash
+# Create empty configmap
+oc crate configmap ca-bundle
+# Annotate configmap
+oc annotate configmap ca-bundle service.beta.openshift.io/inject-cabundle=true
+```
+
