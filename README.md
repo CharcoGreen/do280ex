@@ -31,7 +31,7 @@ Security y RBAC en OpenShift
 
 ## Some resources
 
-[un official Wiki](https://www.enoks.fr/openshift/EX280/#manage-openshift-container-platform)
+[unofficial Wiki](https://www.enoks.fr/openshift/EX280/#manage-openshift-container-platform)  
 [YouTube Videos 1](https://www.youtube.com/watch?v=YWMG6pZh8YY)  
 [YouTube Videos 2](https://www.youtube.com/watch?v=nLhBrjhQRe8)  
 [GitHub Repository: ex280v42](https://github.com/vbudi000/ex280v42)  
