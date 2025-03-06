@@ -276,7 +276,7 @@ oc adm policy add-cluster-role-to-group --rolebinding-name custom-self-provision
 # Create new file htpasswd 
 htpasswd -c -B -b ~/DO280/labs/auth-review/tmp_users tester 'L@bR3v!ew'
 # Validate Password to a specific user
- htpasswd -v -b  ~/DO280/labs/auth-review/tmp_users tester 'L@bR3v!ew'
+htpasswd -v -b  ~/DO280/labs/auth-review/tmp_users tester 'L@bR3v!ew'
 # Add new or update user and password to file.
 htpasswd -b  ~/DO280/labs/auth-review/tmp_users tester 'L@bR3v!ew'
 ```
@@ -343,7 +343,7 @@ spec:
           policy-group.network.openshift.io/ingress: ""
 ```
 
-- Internal traffic TLS 
+- Internal traffic TLS
   
 ```bash
  oc annotate svc server service.beta.openshift.io/serving-cert-secret-name=server-secret
@@ -364,3 +364,157 @@ oc crate configmap ca-bundle
 oc annotate configmap ca-bundle service.beta.openshift.io/inject-cabundle=true
 ```
 
+## From O´reilly
+
+https://github.com/sandervanvugt/ex280 
+
+### Essential oc help
+
+```bash
+source <(oc completion)
+oc set env -h 
+oc set volumes -h 
+oc set resources -h 
+oc adm create-bootstrap-project-template
+oc adm policy -h 
+oc create quota -h
+oc create secret tls -h 
+oc describe clusterrole.rbac [|grep ^Name]
+```
+
+
+- bootstrap project with quota, limit range, networkpolicy
+
+### Practice: Create project and secure app
+
+- Create the project my-project
+- In this project, run a deployment that is based on the Docker image sandervanvugt/openshift:latest with the name hello-app
+- Configure this deployment such that is uses a TLS certificate at the expected location. Use the TLS certificate that was created in the prepartion steps of this lab.
+
+```bash
+oc new-project my-project
+oc new-app --name hello-app --image=sandervanvugt/openshift:latest
+oc create secret tls secure-app-tls --cert tls.crt --key tls.key
+oc set volume deploy/hello-app --add --type secret --secret-name secure-app-tls --mount-path /run/secrets/nginx
+```
+
+### Practice: Configuring wordpress
+
+- As developer user, use a deployment to create an application named wordpress in the microservice project
+- Run this applicadtion with the anyuid security context assigned to the wordpress-sa service account
+- Create a route to the wordpress application, using the hostname wordpress-microservice.apps-crc.testing
+- Use secrets and or configmaps to set environment variables:
+  - WORDPRESS_DB_HOST: is set to mysql
+  - WORDPRESS_DB_NAME: is set to the value of wordpress
+  - WORDPRESS_DB_USER: has the value "root"
+  - WORDPRESS_DB_PASSWORD: is set to the value of the password key in the     mysql secret
+
+```bash
+# Login with developer user
+oc login -u developer -p developer
+# Create new project
+oc new-project microservice
+# Create new app wordpress
+oc new-app --name wordpress --image wordpress
+# Create sa to SCC
+oc create sa wordpress-sa
+# Login as admin
+oc login -u admin -p password
+# Create policy to scc to sa
+oc adm policy add-scc-to-user  anyuid  -z wordpress-sa -n microservice
+# Return login to user developer
+oc login -u developer -p developer
+# Set service Account deployment
+oc set serviceacount deployment wordpress wordpress-sa
+# Crate route from svc
+oc expose svc wordpress
+# Create cm wordpress with required values
+oc create cm wordpress-cm --from-literal=host=mysql  --from-literal=name=wordpress --from-literal=user=root --from-literal=password=password
+# Set env values to deployment.
+oc set env deployment wordpress --prefix WORDPRESS_DB_ --from configmap/wordpress-cm
+```
+
+### Practice: Configuring MySQL
+
+- As developer user, use a deployment to create an application named mysql in the mecroservice project
+- Create a generic secret named mysql, using password as the key and mypassword as its value. Use this secret to set the MYSQL_ROOT_PASSWORD enviroment variable to the value of the password in the secret.
+- Configure the MySQL application to mount a PVC to /mnt. The PVC must have a 1GiB, and the RWO access mode
+- Use a node selector to ensure that MySQL will only run on your CRC node.
+
+```bash
+# Login as developer
+oc login -u developer -p developer
+# Change project if exist
+oc project microservice
+# Create new app mysql
+oc new-app mysql --image=mysql
+# Create generic Secret
+oc create secret generic mysql --from-literal=password=mypassword
+# Set secret in deployment like env
+oc set env deploy/mysql --prefix MYSQL_ROOT_ --from secret/mysql
+# Set PVC volume to deployment
+oc set volumes deployment/mysql  --name mysql-pvc --add --type pvc --claim-size 1Gi --claim-mode rwo --mount-path /mnt
+oc login -u admin -p password
+oc get nodes --show-labes
+# Edit to add nodeSelector value 
+oc edit deployment mysql 
+```
+
+### Practice: Route passthrougt
+
+- Use the linginx-v2.yaml file from the course Git repository to create an nginx application. Next, crate a passthrough route to access this application in a secure way. The name of the passthrough route must be set to linginx-default.apps-crc.testing
+- The configuration file that is needed is provided as the file default.conf in the Git repository
+- Use curl --insecure https://linginx-default.apps-crc.testing to verify that the route responds to external requests.
+
+```bash
+# First review the deployment file to inspect values 
+# See the secret name and mount
+# Create secret tls with current name
+oc create sercret tls linginx-certs --cert lab6.crt --key lab6.key
+# Review de configmap to nginx config and create configMap
+oc create configmap nginxconfigmap --from-file=default.conf
+# Also in the yaml file we have a service account so we need create
+oc create sa linginx-sa
+```
+
+### Practice: Creating a Project template
+
+- Create a new project template, according to the following requirements 
+  - Each project has a label with the name of the project
+  - Networkpolicy is set up such that:
+    - Routes can be accessed by pods in namespaces with the network.openshift.io/policy-group=ingress label
+    - Pods in the same namesapce can communicate with each other
+    - Pods are only accesible to Pods in a different namespace if that namespace is configured with the nework.openshift.io/policy-group=ingress label
+  - LimitRange is set up as follows:
+    - Each container request 100 millicores of CPU
+    - Each container request 50MiB of memory
+    - Each container is limited to 200 millicores of CPU
+    - Each container is limited to 100 MiB of memory
+  - ResourceQuota is set up as follows:
+    - Projects are limited to 20pods
+    - Projects can request a maximun of 1GiB of memory
+    - Projecs can request a maximum of 2CPUs
+    - Projects can use a maximum of 2GiB of memory
+    - Projects can use a maximum of 4 CPUs
+
+
+```bash
+oc new-project my-project 
+oc describe project my-projects
+```
+
+```yaml
+apiVersion: "v1"
+kind: "LimitRange"
+metadata:
+  name: "resource-limits"
+spec:
+  limits:
+    - type: "Container"
+      max:
+        cpu: "200m"
+        memory: "100Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "50Mi"
+```
