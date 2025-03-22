@@ -243,7 +243,7 @@ oc delete secret kubeadmin -n kube-system
     After you create the certs
 
      ```bash
-    oc create route edge todo-http  --servoce=todo-http --hostname=todo-https.apps.ocp4.example.com  --key devopstitan.key --cert devopstitan.crt 
+    oc create route edge todo-http  --service=todo-http --hostname=todo-https.apps.ocp4.example.com  --key devopstitan.key --cert devopstitan.crt 
     ```
 
 14. Deploy application in the project rocket. There is one pod already running and application should produce output
@@ -518,3 +518,130 @@ spec:
         cpu: "100m"
         memory: "50Mi"
 ```
+
+
+## Install operators
+
+> Security and compliance
+
+```bash
+oc get packagemanifests
+```
+
+```bash
+oc describe packagemanifest file-integrity-operator
+```
+
+- Crear namespace
+  
+```bash
+cat ~/DO280/labs/operators-cli/namespace.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    openshift.io/cluster-monitoring: "true"
+    pod-security.kubernetes.io/enforce: privileged
+  name: openshift-file-integrity
+```
+
+- Crear operatorGroup 
+
+```bash
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: file-integrity-operator 
+  namespace: openshift-file-integrity  # Mismo namespace
+spec:
+  targetNamespaces:
+  - openshift-file-integrity
+```
+
+- Create subscription
+
+```bash
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: file-integrity-operator
+  namespace: openshift-file-integrity
+spec:
+  channel: "stable"
+  installPlanApproval: Manual
+  name: file-integrity-operator
+  source: do280-catalog-cs # Ojo catalog source can be different.
+  sourceNamespace: openshift-marketplace
+```
+
+- Aprobar el installplan
+
+```bash
+oc get installplan -n openshift-file-integrity install-4wsq6 -o jsonpath='{.spec}{"\n"}'
+```
+
+- Describir el IP
+
+```bash
+oc get installplan -n openshift-file-integrity \
+  install-4wsq6 -o jsonpath='{.spec}{"\n"}'
+{"approval":"Manual","approved":false,"clusterServiceVersionNames":["file-integrity-operator.v1.3.3","file-integrity-operator.v1.3.3"],"generation":1}
+```
+
+- Aprobar el IP
+
+```bash
+# Patch o edit
+oc patch installplan install-4wsq6 --type merge -p \
+    '{"spec":{"approved":true}}' -n openshift-file-integrity
+```
+
+- Review operator installed
+
+```bash
+oc describe operator file-integrity-operator
+...output omitted...
+Status:
+  Components:
+    Label Selector:
+      Match Expressions:
+        Key:       operators.coreos.com/file-integrity-operator.openshift-file-integrity
+        Operator:  Exists
+    Refs:
+      ...output omitted...
+      Conditions:
+        Last Transition Time:  2024-01-26T18:21:03Z
+        Last Update Time:      2024-01-26T18:21:03Z
+        Message:               install strategy completed with no errors
+        Reason:                InstallSucceeded
+        Status:                True
+        Type:                  Succeeded
+      Kind:                    ClusterServiceVersion
+      Name:                    file-integrity-operator.v1.0.0
+      Namespace:               openshift-file-integrity
+      ...output omitted...
+```
+
+- Create instance operator
+
+```bash
+apiVersion: fileintegrity.openshift.io/v1alpha1
+kind: FileIntegrity
+metadata:
+  name: worker-fileintegrity
+  namespace: openshift-file-integrity
+spec:
+  nodeselector:
+    node-role.kubernetes.io/worker: ""
+  config: {}
+```
+
+
+## Storage question
+
+```bash
+oc set volumes deploy/webconfig --add --type configmap --configmap-name=configmap-vol --name data-vol --mount-path=/var/www/hmtl
+oc set volumes  deploy/db-pod --add --type pvc --claim-name db-pod-pvc --mount-path /var/lib/mysql --name db-pod-vol 
+```
+
